@@ -1,0 +1,111 @@
+# Tema 2 - Limiarização e Segmentação (Global, Otsu e Adaptativo)
+# Para rodar: streamlit run app.py
+
+from pathlib import Path
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import streamlit as st
+
+
+def otsu(img):
+    # histograma normalizado (probabilidade de cada nível de cinza)
+    hist = cv2.calcHist([img], [0], None, [256], [0, 256]).ravel()
+    p = hist / hist.sum()
+
+    w0 = np.cumsum(p)                    # peso da classe 0 (pixels <= t)
+    mu = np.cumsum(p * np.arange(256))   # média acumulada até t
+    mu_total = mu[-1]
+
+    # variância entre classes para cada t possível
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sigma_b = (mu_total * w0 - mu) ** 2 / (w0 * (1 - w0))
+    sigma_b = np.nan_to_num(sigma_b, nan=0, posinf=0)
+
+    # o melhor limiar é o que deixa as duas classes mais separadas
+    return int(np.argmax(sigma_b)), sigma_b
+
+
+def histograma(img, T):
+    fig, ax = plt.subplots(figsize=(6, 2.5))
+    ax.hist(img.ravel(), bins=256, range=(0, 256), color="gray")
+    ax.axvline(T, color="red", label=f"T = {T}")
+    ax.set_xlim(0, 255)
+    ax.legend()
+    return fig
+
+
+st.set_page_config(page_title="Limiarização", layout="wide")
+st.title("Limiarização e Segmentação")
+
+# escolha da imagem (exemplos da pasta imagens/ ou upload)
+pasta = Path(__file__).parent / "imagens"
+exemplos = sorted(p.name for p in pasta.glob("*.png"))
+escolha = st.sidebar.selectbox("Imagem", exemplos + ["Enviar arquivo"])
+
+if escolha == "Enviar arquivo":
+    arquivo = st.sidebar.file_uploader("Escolha uma imagem", type=["png", "jpg", "jpeg"])
+    if arquivo is None:
+        st.stop()
+    dados = np.frombuffer(arquivo.read(), np.uint8)
+else:
+    # np.fromfile + imdecode porque o cv2.imread falha com acentos no caminho no Windows
+    dados = np.fromfile(pasta / escolha, np.uint8)
+img = cv2.imdecode(dados, cv2.IMREAD_GRAYSCALE)
+
+aba_global, aba_otsu, aba_adapt = st.tabs(["Global", "Otsu", "Adaptativo"])
+
+with aba_global:
+    T = st.slider("Limiar T", 0, 255, 127)
+    _, binaria = cv2.threshold(img, T, 255, cv2.THRESH_BINARY)
+
+    c1, c2, c3 = st.columns(3)
+    c1.image(img, caption="Original")
+    c2.image(binaria, caption=f"Global com T = {T}")
+    c3.pyplot(histograma(img, T))
+
+with aba_otsu:
+    k = st.select_slider("Desfoque gaussiano antes do Otsu (0 = sem)",
+                         options=[0, 3, 5, 7, 9, 11, 15, 21])
+    entrada = cv2.GaussianBlur(img, (k, k), 0) if k > 0 else img
+
+    T_nosso, sigma_b = otsu(entrada)
+    T_cv, binaria = cv2.threshold(entrada, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    st.write(f"T da nossa função: **{T_nosso}** | T do OpenCV: **{int(T_cv)}**")
+
+    c1, c2 = st.columns(2)
+    c1.pyplot(histograma(entrada, T_nosso))
+    fig, ax = plt.subplots(figsize=(6, 2.5))
+    ax.plot(sigma_b)
+    ax.axvline(T_nosso, color="red")
+    ax.set_title("Variância entre classes para cada t")
+    c2.pyplot(fig)
+
+    c1, c2, c3 = st.columns(3)
+    c1.image(img, caption="Original")
+    c2.image(entrada, caption=f"Desfoque {k}x{k}" if k else "Sem desfoque")
+    c3.image(binaria, caption=f"Otsu, T = {int(T_cv)}")
+
+with aba_adapt:
+    c1, c2, c3 = st.columns(3)
+    metodo = c1.radio("Método", ["Média", "Gaussiana"])
+    bloco = c2.slider("Tamanho do bloco (ímpar)", 3, 151, 25, step=2)
+    C = c3.slider("Constante C", -10, 30, 10)
+
+    if metodo == "Média":
+        tipo = cv2.ADAPTIVE_THRESH_MEAN_C
+        media = cv2.blur(img, (bloco, bloco))
+    else:
+        tipo = cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+        media = cv2.GaussianBlur(img, (bloco, bloco), 0)
+
+    binaria = cv2.adaptiveThreshold(img, 255, tipo, cv2.THRESH_BINARY, bloco, C)
+
+    # passo intermediário: o limiar de cada pixel é a média da vizinhança menos C
+    limiar_local = np.clip(media.astype(int) - C, 0, 255).astype(np.uint8)
+
+    c1, c2, c3 = st.columns(3)
+    c1.image(img, caption="Original")
+    c2.image(limiar_local, caption="Limiar de cada pixel T(x, y)")
+    c3.image(binaria, caption=f"Adaptativo, bloco {bloco}, C = {C}")
