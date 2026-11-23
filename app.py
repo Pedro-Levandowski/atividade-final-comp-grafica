@@ -1,6 +1,3 @@
-# Trabalho final de Computação Gráfica - Tema 2 (Limiarização)
-# pra rodar: streamlit run app.py
-
 from pathlib import Path
 
 import cv2
@@ -9,7 +6,6 @@ import numpy as np
 import streamlit as st
 
 
-# fizemos o Otsu na mão pra conferir se dá o mesmo T que o OpenCV
 def otsu(img):
     # p guarda a chance de cada tom de cinza aparecer na imagem
     hist = cv2.calcHist([img], [0], None, [256], [0, 256]).ravel()
@@ -53,7 +49,6 @@ if escolha == "Enviar arquivo":
         st.stop()
     dados = np.frombuffer(arquivo.read(), np.uint8)
 else:
-    # o cv2.imread não abria a imagem por causa do acento em "Área de Trabalho", por isso lemos assim
     dados = np.fromfile(pasta / escolha, np.uint8)
 
 # já carrega em tons de cinza, porque a limiarização compara um único valor por pixel com o T
@@ -112,8 +107,7 @@ with aba_adapt:
     # aqui cada pixel é comparado com a vizinhança dele (bloco x bloco), não com um T único
     binaria = cv2.adaptiveThreshold(img, 255, tipo, cv2.THRESH_BINARY, bloco, C)
 
-    # só pra visualizar: o T de cada pixel é a média dos vizinhos menos C,
-    # dá pra ver ele ficando mais escuro onde tem sombra
+    # o T de cada pixel é a média dos vizinhos menos C, dá pra ver ele ficando mais escuro onde tem sombra
     limiar_local = np.clip(media.astype(int) - C, 0, 255).astype(np.uint8)
 
     c1, c2, c3 = st.columns(3)
