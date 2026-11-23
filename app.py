@@ -14,14 +14,14 @@ def otsu(img):
     # pra cada t: quanto da imagem fica no fundo (w0) e a média acumulada (mu)
     w0 = np.cumsum(p)
     mu = np.cumsum(p * np.arange(256))
-    mu_total = mu[-1]
-
-    # fórmula da variância entre as classes, a mesma do slide
+    # pesos e médias das duas classes (nas pontas uma classe fica vazia e a divisão dá erro)
     with np.errstate(divide="ignore", invalid="ignore"):
-        sigma_b = (mu_total * w0 - mu) ** 2 / (w0 * (1 - w0))
-    # nas pontas a conta divide por zero, então zeramos esses valores
+        w1 = 1 - w0
+        mu0 = mu / w0
+        mu1 = (mu[-1] - mu) / w1
+        # a fórmula do slide: w0 * w1 * (mu0 - mu1)²
+        sigma_b = w0 * w1 * (mu0 - mu1) ** 2
     sigma_b = np.nan_to_num(sigma_b, nan=0, posinf=0)
-
     # o T escolhido é onde essa variância é a maior
     return int(np.argmax(sigma_b)), sigma_b
 
